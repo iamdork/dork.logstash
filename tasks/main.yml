@@ -1,0 +1,100 @@
+# ======================================================================
+# PACKAGES
+# ======================================================================
+- name: register elasticsearch rpm key
+  rpm_key:
+    key: http://packages.elasticsearch.org/GPG-KEY-elasticsearch
+
+- name: install repo files
+  copy:
+    src: "{{ item }}.repo"
+    dest: /etc/yum.repos.d/{{ item }}.repo
+  with_items:
+  - elasticsearch
+  - logstash
+
+- name: install rpm packages
+  yum:
+    name: "{{ item }}"
+    state: present
+  with_items:
+  - java-1.7.0-openjdk
+  - elasticsearch-1.4.4
+  - logstash
+
+- name: start elasticsearch service
+  service:
+    name: elasticsearch
+    state: started
+
+- name: start logstash service
+  service:
+    name: logstash
+    state: started
+
+# ======================================================================
+# KIBANA
+# ======================================================================
+- name: download kibana
+  get_url:
+    url: https://download.elastic.co/kibana/kibana/kibana-4.0.2-linux-x64.zip
+    dest: /tmp/kibana-4.0.2.zip
+
+- name: unzip kibana
+  unarchive:
+    copy: no
+    src: /tmp/kibana-4.0.2.zip
+    dest: /opt
+    creates: /opt/kibana-4.0.2-linux-x64
+
+- name: link kibana
+  file:
+    src: /opt/kibana-4.0.2-linux-x64
+    dest: /opt/kibana
+    state: link
+
+- name: install kibana service file
+  copy:
+    src: kibana.service
+    dest: /etc/systemd/system/kibana4.service
+  register: kibana
+
+- name: enable kibana service
+  shell: systemctl enable kibana4
+  when: kibana.changed
+
+- name: ensure kibana is running
+  service:
+    name: kibana4
+    state: started
+
+- name: copy kibana nginx tool settings
+  copy:
+    src: logs.conf
+    dest: /etc/nginx/tools/logs.conf
+
+# ======================================================================
+# CERTIFICATES
+# ======================================================================
+- name: add the docker host ip as subjectAltName
+  lineinfile:
+    dest: /etc/pki/tls/openssl.cnf
+    line: "subjectAltName = IP: 172.17.42.1"
+    insertafter: "^\\[ v3_ca ]"
+
+- name: generate certificates
+  shell: openssl req -config /etc/pki/tls/openssl.cnf -x509 -days 3650 -batch -nodes -newkey rsa:2048 -keyout private/logstash-forwarder.key -out certs/logstash-forwarder.crt
+  args:
+    chdir: /etc/pki/tls
+    creates: /etc/pki/tls/certs/logstash-forwarder.crt
+
+# ======================================================================
+# Lumberjack configuration file
+# ======================================================================
+- name: copy logstash configuration
+  copy:
+    src: lumberjack.conf
+    dest: /etc/logstash/conf.d/99-lumberjack.conf
+  notify: restart logstash
+
+    
