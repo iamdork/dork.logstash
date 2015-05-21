@@ -16,21 +16,11 @@
 - name: install rpm packages
   yum:
     name: "{{ item }}"
-    state: present
+    state: latest
   with_items:
   - java-1.7.0-openjdk
   - elasticsearch-1.4.4
   - logstash
-
-- name: start elasticsearch service
-  service:
-    name: elasticsearch
-    state: started
-
-- name: start logstash service
-  service:
-    name: logstash
-    state: started
 
 # ======================================================================
 # KIBANA
@@ -97,4 +87,21 @@
     dest: /etc/logstash/conf.d/99-lumberjack.conf
   notify: restart logstash
 
-    
+# ======================================================================
+# Start services
+# ======================================================================
+- name: enable services
+  shell: systemctl enable {{ item }}
+  with_items:
+  - elasticsearch
+  - logstash
+  - kibana4
+
+- name: start services
+  service:
+    name: "{{ item }}"
+    state: started
+  with_items:
+  - elasticsearch
+  - logstash
+  - kibana4
